@@ -10,6 +10,7 @@ path = pathlib.Path(os.path.realpath(__file__))
 configs.read(path.parent/'config.ini')
 
 # database credentials
+# database
 hostname = os.environ.get('db_hostname')
 username = os.environ.get('db_username')
 password = os.environ.get('db_password')
