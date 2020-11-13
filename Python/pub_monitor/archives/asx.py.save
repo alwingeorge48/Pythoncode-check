@@ -1,0 +1,48 @@
+# -*- coding: utf-8 -*-
+import scrapy
+from bs4 import BeautifulSoup
+import pandas as pd
+from datetime import datetime
+# import logging
+from configparser import ConfigParser
+import os, pathlib
+import sys
+sys.path.append(r"/home/ubuntu/publication_monitor/pub_monitor/pub_monitor")
+from items import PubMonitorItem
+
+
+class AsxSpider(scrapy.Spider):
+    name = 'asx'
+    items = PubMonitorItem()
+
+    configs = ConfigParser()
+    path = pathlib.Path(os.path.realpath(__file__))
+    configs.read(path.parent.parent.parent/'config.ini')
+    gap_days = int(configs.get('APP', 'gap_days'))
+
+   #  logging.basicConfig(filename=configs.get('APP', 'log_file'), filemode='a', format='%(asctime)s:%(levelname)s:%(message)s')
+    allowed_domains = ['www.asx.com']
+
+    def start_requests(self):
+        df = pd.read_excel(self.configs.get('APP', 'input_file'))
+        for index, row in df.loc[df['M_KEY']=='XASX', ['U_KEY', 'SEARCH_KEY', 'Company ID', 'Company Name']][:5].iterrows():
+            ur	l = f"https://www.asx.com.au/asx/statistics/announcements.do?by=asxCode&asxCode={row['SEARCH_KEY']}&timeframe=D&period=W"
+            yield scrapy.Request(url, meta={'ukey':row['U_KEY'], 'company_id':row['Company ID'], 'company_name':row['Company Name']})
+
+    def validation(self, title, date):
+        return True
+        # return True if ("annual" in title.lower() and (datetime.now()-date).days < AsxSpider.gap_days) else False
+
+    def parse(self, response):
+        soup = BeautifulSoup(response.text, 'lxml')
+        for row in soup.find('table').find('tbody').find_all('tr'):
+            elements = row.find_all('td')
+            date = elements[0].text.strip().replace('\n', '')
+            AsxSpider.items['date'] = date = datetime.strptime(date, "%d/%m/%Y%H:%M %p")
+            AsxSpider.items['title'] = title = str([s for s in elements[2].find('a')][0]).strip()
+            AsxSpider.items['link'] = link = f"https://www.asx.com.au/{elements[2].find('a').attrs['href']}"
+            if self.validation(title, date):
+                AsxSpider.items['ukey'] = response.meta['ukey']
+                AsxSpider.items['company_id'] = response.meta['company_id']
+                AsxSpider.items['company_name'] = response.meta['company_name']
+                yield AsxSpider.items

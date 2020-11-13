@@ -1,0 +1,51 @@
+# -*- coding: utf-8 -*-
+import scrapy
+from bs4 import BeautifulSoup
+import pandas as pd
+from datetime import datetime
+import logging
+from configparser import ConfigParser
+import os, pathlib
+import sys
+sys.path.append(r"/home/ubuntu/publication_monitor/pub_monitor/pub_monitor")
+from items import PubMonitorItem
+from dateutil.relativedelta import relativedelta
+
+class TwseSpider(scrapy.Spider):
+    custom_settings = {'ROBOTSTXT_OBEY': False, 'USER_AGENT': 'Mozilla/5.0', 'DOWNLOAD_DELAY': 6}
+    name = 'twse'
+    items = PubMonitorItem()
+
+    configs = ConfigParser()
+    path = pathlib.Path(os.path.realpath(__file__))
+    co
+
+    allowed_domains = ['doc.twse.com.tw']
+
+    def start_requests(self):
+        df = pd.read_excel(self.configs.get('APP', 'input_file'))
+        for index, row in df.loc[df['M_KEY']=='XTWMOPS', :].iterrows():
+            url = f"https://doc.twse.com.tw/server-java/t57sb01?step=1&colorchg=1&co_id={row['SEARCH_KEY']}&year={self.year}&mtype=F&"
+            yield scrapy.Request(url, meta={'ukey':row['U_KEY'], 'company_id':row['Company ID'], 'company_name':row['Company Name'], 'mkey':row['M_KEY'], 'domicile':row['DOMICILE'], 'trgr':row['TRIGGER_DOC']})
+
+    # def validation(self, title, date):
+    #     return True if ("會年報".lower() in title.lower()) else False
+
+    def parse(self, response):
+        soup = BeautifulSoup(response.body, 'lxml')
+        for count, row in enumerate(soup.find_all('table')[1].find_all('tr')):
+            if count!=0:
+                elements = row.find_all('td')
+                TwseSpider.items['doc_name'] = title = elements[5].text
+                TwseSpider.items['doc_link'] = link = response.request.url
+                date = f"0{elements[9].text}"
+                TwseSpider.items['publication_date'] = date = datetime.strptime(date, "%Y/%m/%d %H:%M:%S") + relativedelta(years=1911)
+                TwseSpider.items['ukey'] = response.meta['ukey']
+                TwseSpider.items['mkey'] = response.meta['mkey']
+                TwseSpider.items['company_id'] = response.meta['company_id']
+                TwseSpider.items['company_name'] = response.meta['company_name']
+                TwseSpider.items['domicile'] = response.meta['domicile']
+                TwseSpider.items['trgr'] = response.meta['trgr']
+                TwseSpider.items['update_date'] = datetime.now()
+                TwseSpider.items['year'] = date.year
+                yield TwseSpider.items

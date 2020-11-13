@@ -1,0 +1,57 @@
+# -*- coding: utf-8 -*-
+import scrapy
+from bs4 import BeautifulSoup
+import pandas as pd
+from datetime import datetime
+import re
+import logging
+from configparser import ConfigParser
+import os, pathlib
+import sys
+sys.path.append(r"C:\Users\keyurs\Documents\python-venv\scrappers\scrappers")
+from items import PubMonitorItem
+
+class SetSpider(scrapy.Spider):
+    name = 'set'
+    items = PubMonitorItem()
+
+    configs = ConfigParser()
+    path = pathlib.Path(os.path.realpath(__file__))
+    configs.read(path.parent.parent.parent/'config.ini')
+    year = int(configs.get('APP', 'year'))
+    gap_days = int(configs.get('APP', 'gap_days'))
+
+    allowed_domains = ['www.set.or.th']
+
+    def start_requests(self):
+        df = pd.read_excel(self.configs.get('APP', 'input_file'))
+        for index, row in df.loc[df['M_KEY']=='XTHSET', :].iterrows():
+            url = f"https://www.set.or.th/set/companyprofile.do?symbol={row['SEARCH_KEY']}&ssoPageId=4&language=en&country=US"
+            yield scrapy.Request(url, meta={'ukey':row['U_KEY'], 'company_id':row['Company ID'], 'company_name':row['Company Name'], 'mkey':row['M_KEY'], 'domicile':row['DOMICILE'], 'trgr':row['TRIGGER_DOC']})
+
+    def validation(self, year, date):
+        # return True
+        return True if (year == SetSpider.year and (datetime.now()-date).days < SetSpider.gap_days) else False
+
+    def parse(self, response):
+        soup = BeautifulSoup(response.body, 'lxml')
+        elements = soup.find('table').find_all('tr')[0].find('td').find_all('div', recursive=False)[5]
+        year = [i.text for i in elements.find_all('a')]
+        SetSpider.items['doc_link'] = link = [i.attrs['href'] for i in elements.find_all('a')]
+        dates = re.findall(r"[0-9]+/[0-9]+/[0-9]+", elements.text)
+        SetSpider.items['publication_date'] = dates = [datetime.strptime(i, "%d/%m/%Y") for i in dates]
+        for i in zip(year, link, dates):
+            SetSpider.items['title'] = "Annual Report"
+            SetSpider.items['mkey'] = response.meta['mkey']
+            SetSpider.items['ukey'] = response.meta['ukey']
+            SetSpider.items['company_id'] = response.meta['company_id']
+            SetSpider.items['company_name'] = response.meta['company_name']
+            SetSpider.items['domicile'] = response.meta['']
+            lst = [None, f'Annual Report-{SetSpider.year}']
+            if self.validation(i[0], i[2]):
+                SetSpider.items['title'] = f'Annual Report-{SetSpider.year}'
+                SetSpider.items['link'] = i[1]
+                SetSpider.items['date'] = i[2]
+                SetSpider.items['ukey'] = response.meta['ukey']
+                yield SetSpider.items
+

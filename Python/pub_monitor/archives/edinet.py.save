@@ -1,0 +1,69 @@
+# -*- coding: utf-8 -*-
+import scrapy
+from bs4 import BeautifulSoup
+import pandas as pd
+from datetime import datetime
+import logging
+from configparser import ConfigParser
+import os, pathlib
+import sys
+sys.path.append(r"/home/ubuntu/publication_monitor/pub_monitor/pub_monitor")
+from items import PubMonitorItem
+
+
+class EdinetSpider(scrapy.Spider):
+    name = 'edinet'
+    items = PubMonitorItem()
+
+    configs = ConfigParser()
+    path = pathlib.Path(os.path.realpath(__file__))
+    configs.read(path.parent.parent.parent/'config.ini')
+    year = int(configs.get('APP', 'year'))
+    gap_days = int(configs.get('APP', 'gap_days'))
+
+    # logging.basicConfig(filename=configs.get('APP', 'log_file'), filemode='a', format='%(asctime)s:%(levelname)s:%(message)s')
+    custom_settings = {'USER_AGENT': 'Mozilla/5.0'}
+    allowed_domains = ['www.disclosure.edinet-fsa.go.jp']
+    year = int(configs.get('APP', 'year'))
+    gap_days = int(configs.get('APP', 'gap_days'))
+
+    df = pd.read_excel(configs.get('APP', 'input_file'))
+    df = df.loc[df['M_KEY']=='XJPEDINET', :]
+    search_keys = list(df.SEARCH_KEY)
+
+    # for indx in range(0,701,100):
+    #         start_urls.append(f'https://disclosure.edinet-fsa.go.jp/E01EW/BLMainController.jsp?uji.verb=W1E63013CXP001002ActionE&uji.bean=ee.bean.parent.EECommonSearchBean&TID=W1E63013&PID=W1E63013&SESSIONKEY=1581670989635&lgKbn=1&pkbn=0&skbn=1&dskb=&askb=&dflg=0&iflg=0&cal=2&mul=&fls=on&mon=&yer=&pfs=0&row=100&idx={indx}&str=&kbn=1&flg=&syoruiKanriNo=')
+
+    def start_requests(self):
+        url = "https://disclosure.edinet-fsa.go.jp/E01EW/BLMainController.jsp?uji.verb=W1E63012CXW1E6A012DSPSch&uji.bean=ee.bean.parent.EECommonSearchBean&TID=W1E63013&PID=W1E63012&SESSIONKEY=1574253933301&lgKbn=1&pkbn=0&skbn=0&dskb=&dflg=0&iflg=0&row=100&idx=0&cal=2&mul=&fls=on&mon=&yer=&pfs=0"
+        yield scrapy.Request(url)
+   
+    def validation(self, title, date, code):
+        return True if (code in EdinetSpider.search_keys and "annual" in title.lower() and (datetime.now()-date) < EdinetSpider.gap_days) else False
+        # return True
+        # return True if ("annual" in title.lower()) else False        
+
+    def parse(self, response):
+        soup = BeautifulSoup(response.text, 'html.parser')
+        table = soup.find('table', {'class': 'resultTable table_cellspacing_1 table_border_1 mb_6'}).find_all('tr', recursive=False)
+        for count, row in enumerate(table):
+            if count!= 0:
+                elements = row.find_all('td', recursive=False)
+                date = elements[0].text.strip()
+                
+                EdinetSpider.items['publication_date'] = date = datetime.strptime(date, "%Y.%m.%d %H:%M")
+                EdinetSpider.items['doc_name'] = title = elements[1].text.strip()
+                code = elements[2].text.strip()
+                fund = elements[3].text.strip()
+                EdinetSpider.items['doc_link'] = link = f"https://disclosure.edinet-fsa.go.jp/{elements[5].find('a').attrs['href']}"
+                EdinetSpider.items['ukey'] = EdinetSpider.df[EdinetSpider.df['SEARCH_KEY']==code].U_KEY.values[0]
+                EdinetSpider.items['company_id'] = EdinetSpider.df[EdinetSpider.df['SEARCH_KEY']==code]['Company ID'].values[0]
+                EdinetSpider.items['company_name'] = EdinetSpider.df[EdinetSpider.df['SEARCH_KEY']==code]['Company Name'].values[0]
+                EdinetSpider.items['update_date'] = datetime.now()
+                EdinetSpider.items['domicile'] = EdinetSpider.df[EdinetSpider.df['SEARCH']]
+                    ukey = EdinetSpider.df[EdinetSpider.df['SEARCH_KEY']==code].U_KEY.values[0]
+                    EdinetSpider.items['title'] = title
+                    EdinetSpider.items['link'] = link
+                    EdinetSpider.items['date'] = date
+                    EdinetSpider.items['ukey'] = ukey
+                    yield EdinetSpider.items
