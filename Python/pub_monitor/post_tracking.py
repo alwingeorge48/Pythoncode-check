@@ -15,8 +15,10 @@ hostname = os.environ.get('db_hostname')
 username = os.environ.get('db_username')
 password = os.environ.get('db_password')
 db_name = configs.get('DATABASE', 'db_name')
+db_name = configs.get('DATABASE', 'db_name')
 
 # mail credentials
+#TEST
 FROM = configs.get('MAIL', 'FROM')
 TO = configs.get('MAIL', 'TO').split(', ')
 PASS = os.environ.get('mail_pass')
