@@ -9,6 +9,7 @@ import mysql.connector
 
 # get config file
 configs = ConfigParser()
+configs = ConfigParser()
 path = pathlib.Path(os.path.realpath(__file__))
 configs.read(path.parent/'config.ini')
 
